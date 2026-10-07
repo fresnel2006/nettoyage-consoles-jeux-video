@@ -1,56 +1,58 @@
-import numpy as np
+from pathlib import Path
+
 import pandas as pd
 from tabulate import tabulate
 
-play=pd.read_csv('Console Generation data.csv')
+DOSSIER = Path(__file__).parent
+SORTIE = DOSSIER / "output"
+SORTIE.mkdir(exist_ok=True)
 
-play=play.rename(columns={' Original Price ':'Original Price',' 2022 Price (Adjusted for inflation) ':'2022 Price (Adjusted for inflation)',' Total Systems Sold ':'Total Systems Sold'})
+consoles = pd.read_csv(DOSSIER / "Console Generation data.csv")
 
-#time periode nettoyage
-play["Time period"]=play["Time period"].str.lower().str.strip()
-play["Time period"]=play["Time period"].str.replace("present","2026")
-play["Time period"]=play["Time period"].str.replace("?present","-2026")
-play["Time period"]=play["Time period"].str.replace("?","-")
+# Les noms de colonnes ont des espaces en trop
+consoles.columns = consoles.columns.str.strip()
 
-#Primary consoles
-play["Primary consoles"]=play["Primary consoles"].str.lower().str.strip()
+# Time period : "1972?present" -> "1972-2026"
+consoles["Time period"] = (
+    consoles["Time period"]
+    .str.lower()
+    .str.strip()
+    .str.replace("present", "2026", regex=False)
+    .str.replace("?", "-", regex=False)
+)
 
-#Year of release
-play["Year of release"]=play["Year of release"].astype(int)
+# Texte
+for colonne in ["Primary consoles", "Game media"]:
+    consoles[colonne] = consoles[colonne].str.lower().str.strip()
 
-#Game media
-play["Game media"]=play["Game media"].str.lower().str.strip()
+consoles["Year of release"] = consoles["Year of release"].astype(int)
 
-#Original Price
-play["Original Price"]=play["Original Price"].str.lower().str.strip()
-play["Original Price"]=play["Original Price"].str.extract('\$(.+)',1)
-play["Original Price"]=play["Original Price"].astype(float)
+# Prix : " $611.21 " -> 611.21
+for colonne in ["Original Price", "2022 Price (Adjusted for inflation)"]:
+    consoles[colonne] = (
+        consoles[colonne]
+        .str.strip()
+        .str.extract(r"\$([\d,.]+)", expand=False)
+        .str.replace(",", "", regex=False)
+        .astype(float)
+    )
 
-#2022 Price (Adjusted for inflation)
-play["2022 Price (Adjusted for inflation)"]=play["2022 Price (Adjusted for inflation)"].str.lower().str.strip()
-play["2022 Price (Adjusted for inflation)"]=play["2022 Price (Adjusted for inflation)"].str.extract('\$(.+)',1)
-play["2022 Price (Adjusted for inflation)"]=play["2022 Price (Adjusted for inflation)"].str.replace(',','')
-play["2022 Price (Adjusted for inflation)"]=play["2022 Price (Adjusted for inflation)"].astype(float)
+# Ventes : " 1,000,000 " -> 1000000
+consoles["Total Systems Sold"] = (
+    consoles["Total Systems Sold"].str.replace(r"[,\s]", "", regex=True).astype("Int64")
+)
 
+consoles = consoles.drop(columns=["Generation"])
 
+# Separation par constructeur
+playstation = consoles[consoles["Primary consoles"].str.contains("playstation", na=False)]
+xbox = consoles[consoles["Primary consoles"].str.contains("xbox", na=False)]
+nintendo = consoles[consoles["Primary consoles"].str.contains("nintendo", na=False)]
 
+playstation.to_csv(SORTIE / "playstation.csv", index=False)
+xbox.to_csv(SORTIE / "xbox.csv", index=False)
+nintendo.to_csv(SORTIE / "nintendo.csv", index=False)
 
-#Total Systems Sold
-play["Total Systems Sold"]=play["Total Systems Sold"].str.replace(',','')
-play["Total Systems Sold"]=play["Total Systems Sold"].astype(float)
-
-
-play=play.drop(columns=["Generation"])
-
-xb=play[play["Primary consoles"].str.contains("xb")]
-nin=play[play["Primary consoles"].str.contains("nin")]
-play=play[play["Primary consoles"].str.contains("play")]
-
-play.to_csv("C:/Users/fresnel/Desktop/csv traite/Playstation.csv",index=False)
-xb.to_csv("C:/Users/fresnel/Desktop/csv traite/Xbox.csv",index=False)
-nin.to_csv("C:/Users/fresnel/Desktop/csv traite/Nintendo.csv",index=False)
-
-print(tabulate(nin,tablefmt="psql",headers="keys",showindex=False))
-print(tabulate(play,tablefmt="psql",headers="keys",showindex=False))
-print(tabulate(xb,tablefmt="psql",headers="keys",showindex=False))
-
+for nom, table in [("PlayStation", playstation), ("Xbox", xbox), ("Nintendo", nintendo)]:
+    print(f"\n{nom} ({len(table)} consoles)")
+    print(tabulate(table, tablefmt="psql", headers="keys", showindex=False))
